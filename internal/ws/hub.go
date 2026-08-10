@@ -9,6 +9,18 @@ type Hub struct {
 	broadcast  chan BroadcastMessage
 }
 
+func (h *Hub) Register(client *Client) {
+	h.register <- client
+}
+
+func (h *Hub) Unregister(client *Client) {
+	h.unregister <- client
+}
+
+func (h *Hub) Broadcast(message BroadcastMessage) {
+	h.broadcast <- message
+}
+
 type BroadcastMessage struct {
 	ConversationID string
 	Payload        []byte
