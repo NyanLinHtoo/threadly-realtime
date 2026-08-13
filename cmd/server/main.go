@@ -2,6 +2,7 @@ package main
 
 import (
 	"chat-app-realtime/internal/auth"
+	"chat-app-realtime/internal/pubsub"
 	"chat-app-realtime/internal/ws"
 	"fmt"
 	"log"
@@ -10,6 +11,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/joho/godotenv"
+	"github.com/redis/go-redis/v9"
 )
 
 var upgrader = websocket.Upgrader{
@@ -22,16 +24,20 @@ var upgrader = websocket.Upgrader{
 
 func handleWebSocket(hub *ws.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		tokenString := r.URL.Query().Get("token")
-		conversationID := r.URL.Query().Get("conversationId")
+		cookie, err := r.Cookie("token")
+		if err != nil {
+			http.Error(w, "missing token", http.StatusUnauthorized)
+			return
+		}
 
-		if tokenString == "" || conversationID == "" {
-			http.Error(w, "missing token or conversationId", http.StatusUnauthorized)
+		conversationID := r.URL.Query().Get("conversationId")
+		if conversationID == "" {
+			http.Error(w, "missing conversationId", http.StatusUnauthorized)
 			return
 		}
 
 		secret := os.Getenv("JWT_SECRET")
-		claims, err := auth.VerifyToken(tokenString, secret)
+		claims, err := auth.VerifyToken(cookie.Value, secret)
 		if err != nil {
 			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
@@ -65,6 +71,12 @@ func main() {
 
 	hub := ws.NewHub()
 	go hub.Run()
+
+	redisClient := redis.NewClient(&redis.Options{
+		Addr: "localhost:6379",
+	})
+
+	go pubsub.SubscribeAndBroadcast(redisClient, hub)
 
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "ok")
