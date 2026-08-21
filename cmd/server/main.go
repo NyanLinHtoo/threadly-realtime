@@ -14,12 +14,18 @@ import (
 	"github.com/redis/go-redis/v9"
 )
 
+var allowedOrigin = func() string {
+	if origin := os.Getenv("FRONTEND_URL"); origin != "" {
+		return origin
+	}
+	return "http://localhost:3000"
+}()
+
 var upgrader = websocket.Upgrader{
 	ReadBufferSize:  1024,
 	WriteBufferSize: 1024,
 	CheckOrigin: func(r *http.Request) bool {
-		origin := r.Header.Get("Origin")
-		return origin == "http://localhost:3000"
+		return r.Header.Get("Origin") == allowedOrigin
 	},
 }
 
@@ -73,8 +79,13 @@ func main() {
 	hub := ws.NewHub()
 	go hub.Run()
 
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
+	}
+
 	redisClient := redis.NewClient(&redis.Options{
-		Addr: "localhost:6379",
+		Addr: redisAddr,
 	})
 
 	go pubsub.SubscribeAndBroadcast(redisClient, hub)
