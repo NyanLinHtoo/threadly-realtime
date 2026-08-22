@@ -31,11 +31,6 @@ var upgrader = websocket.Upgrader{
 
 func handleWebSocket(hub *ws.Hub) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
-		cookie, err := r.Cookie("token")
-		if err != nil {
-			http.Error(w, "missing token", http.StatusUnauthorized)
-			return
-		}
 
 		conversationID := r.URL.Query().Get("conversationId")
 		if conversationID == "" {
@@ -44,7 +39,13 @@ func handleWebSocket(hub *ws.Hub) http.HandlerFunc {
 		}
 
 		secret := os.Getenv("JWT_SECRET")
-		claims, err := auth.VerifyToken(cookie.Value, secret)
+
+		tokenString := r.URL.Query().Get("token")
+		if tokenString == "" {
+			http.Error(w, "missing token", http.StatusUnauthorized)
+			return
+		}
+		claims, err := auth.VerifyToken(tokenString, secret)
 		if err != nil {
 			http.Error(w, "invalid token", http.StatusUnauthorized)
 			return
