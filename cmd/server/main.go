@@ -79,14 +79,17 @@ func main() {
 	hub := ws.NewHub()
 	go hub.Run()
 
-	redisAddr := os.Getenv("REDIS_ADDR")
-	if redisAddr == "" {
-		redisAddr = "localhost:6379"
+	redisADDR := os.Getenv("REDIS_ADDR")
+	if redisADDR == "" {
+		log.Fatal("REDIS_ADDR environment variable is required")
 	}
 
-	redisClient := redis.NewClient(&redis.Options{
-		Addr: redisAddr,
-	})
+	opts, err := redis.ParseURL(redisADDR)
+	if err != nil {
+		log.Fatal("invalid Redis URL:", err)
+	}
+
+	redisClient := redis.NewClient(opts)
 
 	go pubsub.SubscribeAndBroadcast(redisClient, hub)
 
@@ -95,6 +98,11 @@ func main() {
 	})
 	http.HandleFunc("/ws", handleWebSocket(hub))
 
-	log.Println("Server starting on port 8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	log.Printf("Server starting on port %s", port)
+	log.Fatal(http.ListenAndServe(":"+port, nil))
 }
