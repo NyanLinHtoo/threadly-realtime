@@ -98,11 +98,6 @@ func main() {
 	})
 	http.HandleFunc("/ws", handleWebSocket(hub))
 
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
-	}
-
-	log.Printf("Server starting on port %s", port)
-	log.Fatal(http.ListenAndServe(":"+port, nil))
+	log.Println("Server starting on port 8080")
+	log.Fatal(http.ListenAndServe(":8080", nil))
 }
