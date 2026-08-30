@@ -72,6 +72,48 @@ func handleWebSocket(hub *ws.Hub) http.HandlerFunc {
 	}
 }
 
+func handleNotificationWebSocket(hub *ws.NotificationHub) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		cookie, err := r.Cookie("token")
+		var tokenString string
+		if err == nil {
+			tokenString = cookie.Value
+		} else {
+			tokenString = r.URL.Query().Get("token")
+		}
+
+		if tokenString == "" {
+			http.Error(w, "missing token", http.StatusUnauthorized)
+			return
+		}
+
+		secret := os.Getenv("JWT_SECRET")
+		claims, err := auth.VerifyToken(tokenString, secret)
+		if err != nil {
+			http.Error(w, "invalid token", http.StatusUnauthorized)
+			return
+		}
+
+		conn, err := upgrader.Upgrade(w, r, nil)
+		if err != nil {
+			log.Println("upgrade error:", err)
+			return
+		}
+
+		client := &ws.Client{
+			Conn:   conn,
+			UserID: claims.UserID,
+			Send:   make(chan []byte, 256),
+			Hub:    hub,
+		}
+
+		hub.Register(client)
+
+		go client.WritePump()
+		go client.ReadPump()
+	}
+}
+
 func main() {
 	if err := godotenv.Load(); err != nil {
 		log.Println("no .env file found, relying on real environment variables")
@@ -79,6 +121,9 @@ func main() {
 
 	hub := ws.NewHub()
 	go hub.Run()
+
+	notificationHub := ws.NewNotificationHub()
+	go notificationHub.Run()
 
 	redisADDR := os.Getenv("REDIS_ADDR")
 	if redisADDR == "" {
@@ -93,11 +138,13 @@ func main() {
 	redisClient := redis.NewClient(opts)
 
 	go pubsub.SubscribeAndBroadcast(redisClient, hub)
+	go pubsub.SubscribeAndNotify(redisClient, notificationHub)
 
 	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		fmt.Fprintln(w, "ok")
 	})
 	http.HandleFunc("/ws", handleWebSocket(hub))
+	http.HandleFunc("/ws/notifications", handleNotificationWebSocket(notificationHub))
 
 	log.Println("Server starting on port 8080")
 	log.Fatal(http.ListenAndServe(":8080", nil))

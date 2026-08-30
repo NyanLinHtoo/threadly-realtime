@@ -6,12 +6,16 @@ import (
 	"github.com/gorilla/websocket"
 )
 
+type ClientHub interface {
+	Unregister(client *Client)
+}
+
 type Client struct {
 	Conn           *websocket.Conn
 	UserID         string
 	ConversationID string
 	Send           chan []byte
-	Hub            *Hub
+	Hub            ClientHub // was *Hub — now accepts anything with an Unregister method
 }
 
 func (c *Client) ReadPump() {

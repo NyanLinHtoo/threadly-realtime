@@ -15,6 +15,12 @@ type IncomingMessage struct {
 	Message        json.RawMessage `json:"message"`
 }
 
+type UserNotification struct {
+	UserID  string          `json:"userId"`
+	Type    string          `json:"type"`
+	Payload json.RawMessage `json:"payload"`
+}
+
 func SubscribeAndBroadcast(client *redis.Client, hub *ws.Hub) {
 	ctx := context.Background()
 	sub := client.Subscribe(ctx, "new_message")
@@ -29,6 +35,24 @@ func SubscribeAndBroadcast(client *redis.Client, hub *ws.Hub) {
 		hub.Broadcast(ws.BroadcastMessage{
 			ConversationID: incoming.ConversationID,
 			Payload:        incoming.Message,
+		})
+	}
+}
+
+func SubscribeAndNotify(client *redis.Client, hub *ws.NotificationHub) {
+	ctx := context.Background()
+	sub := client.Subscribe(ctx, "user_notifications")
+
+	for msg := range sub.Channel() {
+		var notification UserNotification
+		if err := json.Unmarshal([]byte(msg.Payload), &notification); err != nil {
+			log.Println("failed to parse notification:", err)
+			continue
+		}
+
+		hub.Notify(ws.NotificationMessage{
+			UserID:  notification.UserID,
+			Payload: []byte(msg.Payload),
 		})
 	}
 }
