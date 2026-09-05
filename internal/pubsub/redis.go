@@ -12,7 +12,7 @@ import (
 
 type IncomingMessage struct {
 	ConversationID string          `json:"conversationId"`
-	Message        json.RawMessage `json:"message"`
+	Event          json.RawMessage `json:"event"`
 }
 
 type UserNotification struct {
@@ -34,7 +34,7 @@ func SubscribeAndBroadcast(client *redis.Client, hub *ws.Hub) {
 
 		hub.Broadcast(ws.BroadcastMessage{
 			ConversationID: incoming.ConversationID,
-			Payload:        incoming.Message,
+			Payload:        incoming.Event,
 		})
 	}
 }
