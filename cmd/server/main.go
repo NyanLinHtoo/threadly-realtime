@@ -4,10 +4,14 @@ import (
 	"chat-app-realtime/internal/auth"
 	"chat-app-realtime/internal/pubsub"
 	"chat-app-realtime/internal/ws"
+	"context"
 	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"github.com/gorilla/websocket"
 	"github.com/joho/godotenv"
@@ -125,17 +129,11 @@ func main() {
 	notificationHub := ws.NewNotificationHub()
 	go notificationHub.Run()
 
-	redisADDR := os.Getenv("REDIS_ADDR")
-	if redisADDR == "" {
-		log.Fatal("REDIS_ADDR environment variable is required")
+	redisAddr := os.Getenv("REDIS_ADDR")
+	if redisAddr == "" {
+		redisAddr = "localhost:6379"
 	}
-
-	opts, err := redis.ParseURL(redisADDR)
-	if err != nil {
-		log.Fatal("invalid Redis URL:", err)
-	}
-
-	redisClient := redis.NewClient(opts)
+	redisClient := redis.NewClient(&redis.Options{Addr: redisAddr})
 
 	go pubsub.SubscribeAndBroadcast(redisClient, hub)
 	go pubsub.SubscribeAndNotify(redisClient, notificationHub)
@@ -146,6 +144,33 @@ func main() {
 	http.HandleFunc("/ws", handleWebSocket(hub))
 	http.HandleFunc("/ws/notifications", handleNotificationWebSocket(notificationHub))
 
-	log.Println("Server starting on port 8080")
-	log.Fatal(http.ListenAndServe(":8080", nil))
+	server := &http.Server{
+		Addr: ":8080",
+	}
+
+	go func() {
+		log.Println("Server starting on port 8080")
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatal(err)
+		}
+	}()
+
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, os.Interrupt, syscall.SIGTERM)
+	<-quit
+
+	log.Println("Shutdown signal received, shutting down gracefully")
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	if err := server.Shutdown(ctx); err != nil {
+		log.Println("Server forced to shut down:", err)
+	}
+
+	if err := redisClient.Close(); err != nil {
+		log.Println("Error closing Redis client:", err)
+	}
+
+	log.Println("Cleanup complete. Exiting.")
 }
