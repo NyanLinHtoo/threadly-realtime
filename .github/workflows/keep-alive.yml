@@ -1,0 +1,13 @@
+name: Keep Realtime Service Awake
+
+on:
+  schedule:
+    - cron: "*/10 * * * *"
+  workflow_dispatch:
+
+jobs:
+  ping:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Ping health endpoint
+        run: curl -fsS https://chat-app-realtime-faeq.onrender.com/health
